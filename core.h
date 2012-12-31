@@ -37,8 +37,8 @@ namespace core {
                 switch (val & 0x1f) {
                 case 0x0a:            return blobmdr;
                 case 0x06: case 0x16: return blobhdr;
-                case 0x02:            return vechdr;
-                case 0x1e:            return bvlhdr;
+                case 0x02: case 0x12: return vechdr;
+                case 0x0e: case 0x1e: return bvlhdr;
                 case 0x1a:            return literal;
                 default:            assert(0);
                 }
@@ -58,10 +58,9 @@ namespace core {
         //
         // blobmdr : ... dddd dddd dddd dddd dddd dddd ddd0 1010
         // blobhdr : ... aaaa abbb bbcc cccl llll kkkk kkkk 0110
-        //  vechdr : ... aaaa abbb bbcc cccl llll llll lll0 0010
-        //  bvlhdr : ... aaaa abbb bbcc cccc cckk kkkk kkk1 1110
+        //  vechdr : ... aaaa abbb bbcc cccl llll llll llll 0010
+        //  bvlhdr : ... aaaa abbb bbcc cccc cckk kkkk kkkk 1110
         // literal : ... xxxx xxxx xxxx xxxx xxxx xxxx xxx1 1010
-        // (unused): ... xxxx xxxx xxxx xxxx xxxx xxxx xxx0 1110
         //
         //  fixnum : ... xxxx xxxx xxxx xxxx xxxx xxxx xxxx xx00
         //
@@ -339,6 +338,22 @@ namespace core {
     //
     // The heap structures are described in layers, in part to enable
     // self-hosting.
+    //
+    // The layer before this comment is sufficient for representing
+    // Scheme-like systems: e.g. references carry tags to classify
+    // their targets (to some degree; this mainly enables header-less
+    // pairs), and all objects have fairly uniform representations
+    // (contiguous sequences of tagged words, or contiguous sequences
+    // of reference-free bytes).
+    //
+    // However, interoperability with native libraries may require
+    // constructing objects with more interesting layouts.  At this
+    // point, the text below is just some not-well-thought-out notes
+    // on one tack I took for that topic.  The end reality will
+    // probably differ significantly.  In any case, I may end up
+    // needing to reshuffle the header bit patterns to grab one for
+    // usage here.  (Best bet there is probably to take some bits away
+    // from literal and/or blobmdr).
 
     // A word-sequence (wsq, word-seq) is a contiguous series of words.
     //
