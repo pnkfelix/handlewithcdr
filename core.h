@@ -5,6 +5,8 @@
 #endif
 #define CORE_H_INCLUDED
 
+#include <iostream>
+
 namespace core {
 
     typedef size_t word_offset_t;
@@ -22,10 +24,11 @@ namespace core {
         friend class WordBut<3>;
         friend class WordBut<4>;
         friend class WordBut<5>;
+
     public:
         // The denotations of these names are explained in the comment
         // below the function definition for variant().
-        enum Variant { snocref, consref, valref, intrref,
+        enum Variant { snokref, konsref, valref, intrref,
                        blobmdr, blobhdr, vechdr, bvlhdr,
                        literal, fixnum };
         typedef Variant variant_t;
@@ -34,8 +37,8 @@ namespace core {
             // These numbers are explained in the table in the comment
             // below the function definition.
             switch (val & 0x7) {
-            case 3: return snocref;
-            case 1: return consref;
+            case 3: return snokref;
+            case 1: return konsref;
             case 5: return valref;
             case 7: return intrref;
 
@@ -57,18 +60,18 @@ namespace core {
 
         // Word format: (we assume a 32-bit word minimum).
         //
-        // snocref : ... aaaa aaaa aaaa aaaa aaaa aaaa aaaa a011 ==  0x3|3
-        // consref : ... aaaa aaaa aaaa aaaa aaaa aaaa aaaa a001 ==  0x1|3
-        //  valref : ... aaaa aaaa aaaa aaaa aaaa aaaa aaaa a101 ==  0x5|3
-        // intrref : ... aaaa aaaa aaaa aaaa aaaa aaaa aaaa a111 ==  0x7|3
+        // snokref : ... aaaa aaaa aaaa aaaa aaaa aaaa aaaa a011 ==  0x3 |3
+        // konsref : ... aaaa aaaa aaaa aaaa aaaa aaaa aaaa a001 ==  0x1 |3
+        //  valref : ... aaaa aaaa aaaa aaaa aaaa aaaa aaaa a101 ==  0x5 |3
+        // intrref : ... aaaa aaaa aaaa aaaa aaaa aaaa aaaa a111 ==  0x7 |3
         //
-        // blobmdr : ... dddd dddd dddd dddd dddd dddd ddd0 1010 == 0x0a|5
-        // blobhdr : ... aaaa abbb bbcc cccl llll kkkk kkkk 0110 ==  0x6|4
-        //  vechdr : ... aaaa abbb bbcc cccl llll llll llll 0010 ==  0x2|4
-        //  bvlhdr : ... aaaa abbb bbcc cccc cckk kkkk kkkk 1110 ==  0xe|4
-        // literal : ... xxxx xxxx xxxx xxxx xxxx xxxx xxx1 1010 == 0x1a|5
+        // blobmdr : ... dddd dddd dddd dddd dddd dddd ddd0 1010 == 0x0a |5
+        // blobhdr : ... aaaa abbb bbcc cccl llll kkkk kkkk 0110 ==  0x6 |4
+        //  vechdr : ... aaaa abbb bbcc cccl llll llll llll 0010 ==  0x2 |4
+        //  bvlhdr : ... aaaa abbb bbcc cccc cckk kkkk kkkk 1110 ==  0xe |4
+        // literal : ... xxxx xxxx xxxx xxxx xxxx xxxx xxx1 1010 == 0x1a |5
         //
-        //  fixnum : ... xxxx xxxx xxxx xxxx xxxx xxxx xxxx xx00 ==  0x0|2
+        //  fixnum : ... xxxx xxxx xxxx xxxx xxxx xxxx xxxx xx00 ==  0x0 |2
         //
         // shorthands above:
         //
@@ -86,8 +89,8 @@ namespace core {
         //
         // - intrref is ptr into tagged portion of object; scan up for header,
         // - valref is ptr to a header (or midder for a blob),
-        // - consref is ptr to a list (rest); interpret self as [head] ++ rest,
-        // - snocref is ptr to a list (prev); interpret self as prev ++ [last].
+        // - konsref is ptr to a list (rest); interpret self as [head] ++ rest,
+        // - snokref is ptr to a list (prev); interpret self as prev ++ [last].
         //
         // All of the -hdr's are the starting word for a heap object.
         // The length of the object is *either* encoded in the header
@@ -107,8 +110,11 @@ namespace core {
 
     protected:
         Word(uintptr_t w) : val(w) {}
+
+    public:
+        uintptr_t uint() const { return val; }
     protected:
-        const uintptr_t val;
+        uintptr_t val;
 
         NO_NULL_CTOR(Word);
     public:
@@ -149,13 +155,17 @@ namespace core {
 #define DECLARE_BOOL_METHODS(MyType)                    \
     bool bool_value(); /* req. this is boolean */
 
+#define DECLARE_SEQ_METHODS(MyType)                                    \
+    MyType seq_car();                                                  \
+    MyType seq_cdr();                                                  \
+    /* END SEQ METHODS */
+
 #define DECLARE_PAIR_METHODS(MyType)                                    \
     /* Pair primops (req. this is pair). */                             \
     MyType pair_car();                                                  \
     MyType pair_cdr();                                                  \
     void pair_setcar(MyType x);                                         \
     void pair_setcdr(MyType x);                                         \
-    /* END PAIR METHODS */
 
 #define DECLARE_VEC_METHODS(MyType)                                     \
     /* Vector-like primops (req. this is vector-like) */                \
@@ -186,8 +196,6 @@ namespace core {
     bool truth();  /* never fails; false solely for #f */               \
     DECLARE_BOOL_METHODS(MyType)                                        \
                                                                         \
-    bool is_null(); /* never fails; true solely for #null. */           \
-                                                                        \
     /* Dynamically-checked primops. */                                  \
                                                                         \
     bool is_fixint();                                                   \
@@ -197,7 +205,13 @@ namespace core {
     /* requires: this is heap allocated.  Includes header (if any).  */ \
     size_t allocated_length();                                          \
                                                                         \
-    bool is_pair();                                                     \
+    bool is_null(); /* infallible; true solely for #null. */            \
+    bool is_void(); /* infallible; true solely for #void. */            \
+    bool is_kons(); /* infallible; true solely for konsref */           \
+    bool is_snok(); /* infallible; true solely for snokref */           \
+    bool is_seq();  /* infallible; true for #null konsref + snokref  */ \
+    bool is_pair(); /* infallible; true for kons/snok/val<_pr> ref  */  \
+    DECLARE_SEQ_METHODS(MyType)                                         \
     DECLARE_PAIR_METHODS(MyType)                                        \
                                                                         \
     bool is_vec();                                                      \
@@ -233,27 +247,42 @@ namespace core {
     double   dbl(byte_offset_t i);            \
     /* END OF BYTE ORIENTED RAW ACCESSORS */
 
-
-    // A tagged-word has a identifier in its low bits.
+    // A formatted-word has a identifier in its low bits.
+    // A tagged-word is formatted and can be treated as a value.
     // (The tagging scheme is variable-width, so the number of tag bits is
     //  unspecified here.)
-    class Tagged : private Word
+
+    class Formatted : protected Word
+    {
+    protected:
+        Formatted(word_t w) : Word(w) {}
+
+        NO_NULL_CTOR(Formatted);
+    public:
+        Formatted(Formatted const &x) : Word(x) {}
+    };
+    typedef Formatted formatted_t;
+
+    class Tagged : public Formatted
     {
     public:
         DECLARE_PRIMOP_METHODS(Tagged);
     protected:
-        Tagged(word_t w) : Word(w) {}
+        Tagged(word_t w);
 
         NO_NULL_CTOR(Tagged);
     public:
-        Tagged(Tagged const &x) : Word(x) {}
+        Tagged(Tagged const &x);
+    public:
+        uintptr_t uint() const { return Word::uint(); }
     };
+    typedef Tagged tagged_t;
 
     // A nym is a three-letter word used to describe the structure for
     // an object.  The letters are drawn from a limited alphabet
     // so that each letter can be encoded in 6 bits.
     //
-    class Nym : private Word {
+    class Nym : public Formatted {
     private:
         static uintptr_t encode(char a, char b, char c) {
             assert(a <= 122);
@@ -276,34 +305,17 @@ namespace core {
         char* decode() { return decode(val >> 2); }
         NO_NULL_CTOR(Nym);
     public:
-        Nym(char a, char b, char c) : Word(tag(a,b,c)) {}
-        Nym(Nym const&x) : Word(x) {}
+        Nym(char a, char b, char c) : Formatted(tag(a,b,c)) {}
+        Nym(Nym const&x) : Formatted(x) {}
     };
     typedef Nym nym_t;
 
     namespace headers {
-        extern nym_t ref, pr, pair, vec, vectorlike, bvl, bytevectorlike, atm, rcd, record, blb, blob, bsq, bit_seq;
+        // nym_t are used both as headers and to express class relationships.
+        extern nym_t 
+            pr, pair,
+            vec, vectorlike, bvl, bytevectorlike, atm, rcd, record, blb, blob, bsq, bit_seq;
     }
-
-    class Handle {
-    public:
-        DECLARE_PRIMOP_METHODS(Tagged);
-    private:
-        Handle *prev;
-        Handle *next;
-        Tagged value;
-    };
-    typedef Handle handle_t;
-
-    // A space holds a collection of memory blocks, and also a set of
-    // roots for the space.
-    class Space {
-        handle_t cons(handle_t ar, handle_t dr);
-        handle_t make_vec(nym_t h, size_t num_vals, handle_t val);
-        handle_t make_bvl(nym_t h, size_t num_bytes);
-        handle_t make_blob(nym_t h, size_t num_vals, handle_t val, size_t num_bytes);
-        handle_t *next;
-    };
 
     // An atom-word (atm, atom) is a tagged self-contained word-sized value.
     class Atom : public Tagged {
@@ -318,6 +330,125 @@ namespace core {
     };
     typedef Atom atom_t;
 
+    class Space;
+    class Handle {
+        friend class Space;
+    public:
+        DECLARE_PRIMOP_METHODS(Handle);
+    private:
+        Handle(Handle *prev,
+               Handle *next,
+               Tagged v) : prev(prev), next(next), value(v) {}
+    public:
+        Handle& operator=(Handle const& h) {
+            this->value = h.value;
+            return *this;
+        }
+
+        Handle(Handle const& h) : value(h.value) {
+            this->prev = h.prev;
+            if (h.prev) h.prev->next = this;
+            h.prev = this;
+            this->next = &h;
+        }
+
+        Handle(Handle const& h, tagged_t v) : value(v) {
+            this->prev = h.prev;
+            if (h.prev) h.prev->next = this;
+            h.prev = this;
+            this->next = &h;
+        }
+
+        ~Handle() {
+            if (this->prev)
+                this->prev->next = this->next;
+            if (this->next)
+                this->next->prev = this->prev;
+        }
+    private:
+        mutable Handle *prev;
+        const Handle *next;
+    private:
+        Tagged value;
+    public:
+        uintptr_t uint() const { return value.uint(); }
+    };
+    typedef Handle handle_t;
+
+    // A space holds a collection of memory blocks, and also a set of
+    // roots for the space.
+    class Space {
+    public:
+        Space();
+        // These are all named "cons"/"snoc" rather than "kons"/"snok" because
+        // they handle arbitrary inputs (and then dispatch to kons/snok when
+        // appropriate for the inputs).
+
+        handle_t cons(handle_t ar, handle_t dr);
+        handle_t cons(Atom ar, handle_t dr);
+        handle_t cons(handle_t ar, Atom dr);
+        handle_t cons(Atom ar, Atom dr);
+
+        handle_t snoc(handle_t ar, handle_t dr);
+        handle_t snoc(Atom ar, handle_t dr);
+        handle_t snoc(handle_t ar, Atom dr);
+        handle_t snoc(Atom ar, Atom dr);
+
+        handle_t make_vec(nym_t h, size_t num_vals, handle_t val);
+        handle_t make_vec(nym_t h, size_t num_vals, Atom val);
+
+        handle_t make_bvl(nym_t h, size_t num_bytes);
+        handle_t make_blob(nym_t h, size_t num_vals, handle_t val, size_t num_bytes);
+        handle_t make_blob(nym_t h, size_t num_vals, Atom val, size_t num_bytes);
+
+        handle_t null(); // even though this does not allocate heap-space,
+        // we need to create a handle for #null so that it can be passed
+        // in the same uniform manner to the other methods of Space.
+        //
+        // Is this crazy?  It certainly seems crazy.  Maybe there should
+        // be two kinds of handles, rooted and unrooted, and then use
+        // method dispatch.  It seems like a tradeoff between:
+        //   1. virtual-method overhead + some amount of manual management
+        // versus
+        //   2. root-list-overhead + handle-size overhead
+        //
+        // But since experimenting with automatic handle management
+        // was the whole point of this exercise, let us follow through
+        // with it.
+        //
+        // (Also, the expected case is that the handles *will* tend to
+        //  be used in contexts where they do carry useful state, not
+        //  places where they are statically known to be non-heap
+        //  values.)
+        //
+        // UPDATE: The other solution, also incorporated above, is to
+        // overload the cons+make_x methods so that anything that
+        // takes a handle_t can also take a Atom instead.  This way,
+        // when you *do* know you are dealing with an atom, you need
+        // not acquire a handle to manage it.
+
+    public:
+        void print_roots();
+
+    private:
+        // h, n       -> [h, x_2, x_3, ..., x_n] where x_i *unformatted*
+        virtual void* gcalloc(formatted_t h, size_t n) = 0;
+        // h, w, n    -> [h, w_2, w_3, ..., w_n]
+        virtual void* gcalloc(formatted_t a, word_t w, size_t n) {
+            word_t *m = (word_t*) this->gcalloc(a, n);
+            for (size_t i = 1; i < n; i++) m[i] = w;
+            return m;
+        }
+        // a, b       -> [a, b]
+        virtual void* gcalloc(formatted_t a, formatted_t b) {
+            formatted_t *m = (formatted_t*) this->gcalloc(a, 2);
+            m[1] = b;
+            return m;
+        }
+    private:
+        handle_t *next;
+    };
+
     // A ref-word (ref) is a tagged reference to another object.
     // A ref-word may point to the beginning or to the interior of its
     // target.
@@ -325,8 +456,25 @@ namespace core {
     // one should instead use one of the getref/getraw methods
     // to extract its contents.
     class Ref : public Tagged {
+        friend class Space;
+    public:
+        static void checkaligned(uintptr_t x) { assert((x & 0x7) == 0); }
+        static intptr_t tagsnok(uintptr_t x) { return x | 0x3; }
+        static intptr_t tagkons(uintptr_t x) { return x | 0x1; }
+        static intptr_t  tagval(uintptr_t x) { return x | 0x5; }
+        static intptr_t tagintr(uintptr_t x) { return x | 0x7; }
+        static intptr_t tagvariant(uintptr_t x, variant_t variant) {
+            checkaligned(x);
+            switch (variant) {
+            case snokref: return tagsnok(x);
+            case konsref: return tagkons(x);
+            case valref:  return tagval(x);
+            case intrref: return tagintr(x);
+            default: assert(0);
+            }
+        }
     protected:
-        Ref(word_t w) : Tagged(w) {}
+        Ref(intptr_t w, variant_t variant);
 
         NO_NULL_CTOR(Ref);
     public:
@@ -361,9 +509,10 @@ namespace core {
         const Content5 Content ## x (v);               \
         const Literal Literal ## x (Content ## x);
 
-        DEFLITERAL(_true, 0x0);
-        DEFLITERAL(_false, 0x1);
-        DEFLITERAL(_void, 0x2);
+        DEFLITERAL(_true, 0x0);  // canonical truth, #t (for pure bool fcns)
+        DEFLITERAL(_false, 0x1); // the false value, #f
+        DEFLITERAL(_void, 0x2);  // the undisplayed value, #void
+        DEFLITERAL(_null, 0x3);  // the empty list, #null
 #undef DEFLITERAL
     };
 
@@ -410,11 +559,34 @@ namespace core {
         size_t wordsize(); // interface method, do not call.
     };
 
-    // A cons-pair (pr, pair) is a header-less word-seq of 2 words.
+    // A cons-pair is a header-less word-seq of 2 words, where the second word
+    // is always a seq.
     class Cons : private WordSeq {
 
         NO_DEFAULT_CTORS(Cons);
         size_t wordsize() { return 2; }
+    };
+
+    // A snoc-pair is a header-less word-seq of 2 words, where the second word
+    // is always a seq.
+    class Snoc : private WordSeq {
+
+        NO_DEFAULT_CTORS(Snoc);
+        size_t wordsize() { return 2; }
+    };
+
+    // A pair is a _pr headered (!) word-seq of 2 arbitrary words.
+    // It is constructed by cons when the second argument is a non-seq.
+    class Pair : private WordSeq {
+
+        NO_DEFAULT_CTORS(Pair);
+        size_t wordsize() { assert(0); }
+    };
+
+    class Vec : private WordSeq {
+
+        NO_DEFAULT_CTORS(Vec);
+        size_t wordsize() { assert(0); }
     };
 
     // A byte-vector-like (bvl, bytevec) is a word-sequence made solely
