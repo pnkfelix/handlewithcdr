@@ -14,8 +14,14 @@ namespace core {
 #error "val.h requires previous include: ctors.h"
 #endif
 
+    template <size_t n> class WordBut;
+
     // A word is a word-sized value.
     class Word {
+        friend class WordBut<2>;
+        friend class WordBut<3>;
+        friend class WordBut<4>;
+        friend class WordBut<5>;
     public:
         // The denotations of these names are explained in the comment
         // below the function definition for variant().
@@ -51,18 +57,18 @@ namespace core {
 
         // Word format: (we assume a 32-bit word minimum).
         //
-        // snocref : ... aaaa aaaa aaaa aaaa aaaa aaaa aaaa a011
-        // consref : ... aaaa aaaa aaaa aaaa aaaa aaaa aaaa a001
-        //  valref : ... aaaa aaaa aaaa aaaa aaaa aaaa aaaa a101
-        // intrref : ... aaaa aaaa aaaa aaaa aaaa aaaa aaaa a111
+        // snocref : ... aaaa aaaa aaaa aaaa aaaa aaaa aaaa a011 ==  0x3|3
+        // consref : ... aaaa aaaa aaaa aaaa aaaa aaaa aaaa a001 ==  0x1|3
+        //  valref : ... aaaa aaaa aaaa aaaa aaaa aaaa aaaa a101 ==  0x5|3
+        // intrref : ... aaaa aaaa aaaa aaaa aaaa aaaa aaaa a111 ==  0x7|3
         //
-        // blobmdr : ... dddd dddd dddd dddd dddd dddd ddd0 1010
-        // blobhdr : ... aaaa abbb bbcc cccl llll kkkk kkkk 0110
-        //  vechdr : ... aaaa abbb bbcc cccl llll llll llll 0010
-        //  bvlhdr : ... aaaa abbb bbcc cccc cckk kkkk kkkk 1110
-        // literal : ... xxxx xxxx xxxx xxxx xxxx xxxx xxx1 1010
+        // blobmdr : ... dddd dddd dddd dddd dddd dddd ddd0 1010 == 0x0a|5
+        // blobhdr : ... aaaa abbb bbcc cccl llll kkkk kkkk 0110 ==  0x6|4
+        //  vechdr : ... aaaa abbb bbcc cccl llll llll llll 0010 ==  0x2|4
+        //  bvlhdr : ... aaaa abbb bbcc cccc cckk kkkk kkkk 1110 ==  0xe|4
+        // literal : ... xxxx xxxx xxxx xxxx xxxx xxxx xxx1 1010 == 0x1a|5
         //
-        //  fixnum : ... xxxx xxxx xxxx xxxx xxxx xxxx xxxx xx00
+        //  fixnum : ... xxxx xxxx xxxx xxxx xxxx xxxx xxxx xx00 ==  0x0|2
         //
         // shorthands above:
         //
@@ -102,16 +108,43 @@ namespace core {
     protected:
         Word(uintptr_t w) : val(w) {}
     protected:
-        uintptr_t val;
+        const uintptr_t val;
 
         NO_NULL_CTOR(Word);
     public:
         Word(Word const &x) : val(x.val) {}
-        Word operator<<(size_t x) { return Word(val << x); }
+        Word operator<<(intptr_t x) { return Word(val << x); }
+        Word operator>>(intptr_t x) { return Word(val >> x); }
+        Word operator&(uintptr_t x) { return Word(val & x); }
+        Word operator&(Word x) { return Word(val & x.val); }
+        bool operator==(uintptr_t x) { return val == x; }
+        Word operator|(uintptr_t x) { return Word(val | x); }
         Word operator|(Word x) { return Word(val | x.val); }
     };
     typedef Word word_t;
 
+    template <size_t n>
+    class WordBut {
+        static bool tagbitsclear(uintptr_t w) {
+            return (w >> (sizeof(uintptr_t)*8 - n)) == 0;
+        }
+    public:
+        WordBut(uintptr_t w) : content(w) { assert(tagbitsclear(w)); }
+    public:
+        Word tag(uintptr_t t) { assert((t >> n) == 0);
+            return Word(content << n | t);
+        }
+        NO_NULL_CTOR(WordBut);
+        private:
+            uintptr_t content;
+    };
+    class Content2 : public WordBut<2> { };
+    class Content3 : public WordBut<3> { };
+    class Content4 : public WordBut<4> { };
+    class Content5 : public WordBut<5> {
+    public:
+        Content5(uintptr_t c) : WordBut(c) { }
+    };
 
 #define DECLARE_BOOL_METHODS(MyType)                    \
     bool bool_value(); /* req. this is boolean */
@@ -150,7 +183,7 @@ namespace core {
 
 #define DECLARE_PRIMOP_METHODS(MyType)                                  \
     bool is_bool(); /* never fails; true for boolean (#t, #f)  */       \
-    bool truth_value();  /* never fails; false solely for #f */         \
+    bool truth();  /* never fails; false solely for #f */               \
     DECLARE_BOOL_METHODS(MyType)                                        \
                                                                         \
     bool is_null(); /* never fails; true solely for #null. */           \
@@ -316,11 +349,22 @@ namespace core {
     // A literal (lit) is a tagged constant.
     class Literal : public Atom {
     public:
-        Literal(word_t w) : Atom(w) {}
+        explicit Literal(Content5 c) : Atom(c.tag(0x1a)) { }
 
         NO_NULL_CTOR(Literal);
     public:
         Literal(Literal const &x) : Atom(x) {}
+    };
+
+    namespace constants {
+#define DEFLITERAL(x, v)                                \
+        const Content5 Content ## x (v);               \
+        const Literal Literal ## x (Content ## x);
+
+        DEFLITERAL(_true, 0x0);
+        DEFLITERAL(_false, 0x1);
+        DEFLITERAL(_void, 0x2);
+#undef DEFLITERAL
     };
 
     // The heap structure is a delicate topic.
@@ -429,7 +473,6 @@ namespace core {
         // word-boundary for this object.
         int8_t bits[1];
         kind_t describe(size_t i) {
-            
             return bits[i];
         }
     };

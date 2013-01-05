@@ -9,7 +9,21 @@
 
 namespace core {
     bool Tagged::is_fixint() {
-        return (this->val & 0x3) == 0;
+        return (this->variant() == fixnum);
+    }
+
+    bool Tagged::is_bool() {
+        return (this->variant() == literal) &&
+            (this->val == constants::Literal_true.val ||
+             this->val == constants::Literal_false.val);
+    }
+
+    bool Tagged::truth() {
+        if ((this->variant() == literal) &&
+            (this->val == constants::Literal_false.val))
+            return false;
+        else
+            return true;
     }
 
     namespace headers {
